@@ -12,7 +12,7 @@
 //to one of the 3 ESCs, and depending on distance they are from the joystick XY coordinates, will vary in speed
 
 #define C_A float( float(800 / sqrtf(3)) / 2)   //x value of the top 2 points
-#define C_B float(400 / 3 )
+#define C_B float(400 / 3 )//y value of top 2 points
 #define C_C float(-800 / 3)
 #define SLOPE_CONSTANT float( (C_C - C_B) /  (0.0 - C_A) )
 #define SIDE_LENGTH float(800 / sqrtf(3))
@@ -33,6 +33,9 @@ ___\__ front __/___________x
         (0,C)
 
 */
+//Rule of thumb: the closer the joystick gets to the coordinate, the more the ball will arc that way
+
+
 
 //so I can map with floats
 float mapfloat(float x, float in_min, float in_max, float out_min, float out_max)
@@ -47,18 +50,46 @@ void MapJoystick(int JoystickX, int JoystickY, float* X, float* Y)
 {
     //handling the upsideDown inversions outside this function in main
     //currently written in rightside up notation
-    *Y = mapfloat(JoystickY, JOYSTICK_MAX, JOYSTICK_MIN, C_C, C_B);
 
-    *X = mapfloat(JoystickX, JOYSTICK_MAX, JOYSTICK_MIN, (-1.0 * C_A), C_A);
+    if (JoystickY > JOYSTICK_Y_MAX)
+      JoystickY = JOYSTICK_Y_MAX;
+    else if (JoystickY < JOYSTICK_Y_MIN)
+      JoystickY = JOYSTICK_Y_MIN;
+
+    if (JoystickX > JOYSTICK_X_MAX)
+      JoystickX = JOYSTICK_X_MAX;
+    else if (JoystickX < JOYSTICK_X_MIN)
+      JoystickX = JOYSTICK_X_MIN;
+
+
+    //Y likes to hang out just below the true center of the triangle ( it actually resides at the center of the vertical symmetry line)
+    //to put it on center, we need to split its mapping into 2 different sections
+    //also, we need to figure out how to give the blaster a slight hop-up by default when the joystick is in neutral
+    //the problem is when we flip the blaster over, the hop-up moves to the other side
+    if(JoystickY > JOYSTICK_CENTER_Y)
+    {
+      *Y = mapfloat(JoystickY, JOYSTICK_Y_MAX, JOYSTICK_CENTER_Y, C_B, 0);
+    }
+    else
+    {
+      *Y = mapfloat(JoystickY, JOYSTICK_CENTER_Y, JOYSTICK_Y_MIN, 0, C_C);
+    }
+
+
+
+    *X = mapfloat(JoystickX, JOYSTICK_X_MIN, JOYSTICK_X_MAX, (-1.0 * C_A), C_A);
 
     //this limits X values bsed on where vertically on the triange it is (because the triangle gets smaller the further down you go)
     float XSlopeLimit = (  (*Y - C_C) / SLOPE_CONSTANT);
 
+
     //if X exceeds this, it will be snapped to it.
     if(*X < (XSlopeLimit * -1.0))
-      *X = (XSlopeLimit * -1.0);
+      {*X = (XSlopeLimit * -1.0);}
     else if (*X > XSlopeLimit)
-      *X = XSlopeLimit;
+      {*X = XSlopeLimit;}
+
+
 
 }
 
@@ -103,12 +134,24 @@ void DriveAllFlywheels (int JoystickX, int JoystickY, bool Fire, float* LeftServ
       float X{};
       float Y{};
 
-      MapJoystick(JoystickX, JoystickY, &X, &Y);
-      FindServoValue(X, Y, &RawLeftServo, &RawRightServo, &RawBottomServo);
+      MapJoystick(JoystickX, JoystickY, &X, &Y);//convert joystick values to something compatible with the function below
+      FindServoValue(X, Y, &RawLeftServo, &RawRightServo, &RawBottomServo);//input X and Y and get the 3 flywheel speeds out
       *LeftServo = RawLeftServo;
       *RightServo = RawRightServo;
       *BottomServo = RawBottomServo;
       SlowCounter = REV_DOWN_RATE;
+
+      Serial.print(X);
+      Serial.print(" : ");
+      Serial.print(Y);
+      Serial.print(" || ");
+      Serial.print(RawLeftServo);
+      Serial.print(" : ");
+      Serial.print(RawRightServo);
+      Serial.print(" : ");
+      Serial.println(RawBottomServo);
+
+
 
     }
     else

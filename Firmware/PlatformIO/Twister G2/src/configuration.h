@@ -6,15 +6,31 @@
 #define USE_PULLUPS//tell the board to use its onboard pullup resistors
 
 //pins for the inputs
-#define REV_BUTTON 4
-#define FIRE_BUTTON 7
+#define REV_BUTTON 7
+#define FIRE_BUTTON 4
 
 
 #define X_JOYSTICK_POT 3
 #define Y_JOYSTICK_POT 6
 
-#define JOYSTICK_MIN 0
-#define JOYSTICK_MAX 800
+
+//both joysticks like to sit around 615 in value even though their range extends the full 0-1023 range
+//center for them should be around 512, this is about 100 off in value, so I decided to go off the center range + radius
+//instead of the min/max range
+
+#define JOYSTICK_CENTER_X 615
+#define JOYSTICK_CENTER_Y 615
+
+//should be the value of the smallest differece between center and one of the walls (in my case, 1023)
+#define JOYSTICK_X_RAD 410
+#define JOYSTICK_Y_RAD 410
+
+//no need to touch these: they're automatically configured by the prcompiler using the values above
+#define JOYSTICK_X_MIN (JOYSTICK_CENTER_X - JOYSTICK_X_RAD)
+#define JOYSTICK_X_MAX (JOYSTICK_CENTER_X + JOYSTICK_X_RAD)
+#define JOYSTICK_Y_MIN (JOYSTICK_CENTER_Y - JOYSTICK_Y_RAD)
+#define JOYSTICK_Y_MAX (JOYSTICK_CENTER_Y + JOYSTICK_Y_RAD)
+
 
 
 #define POWER_POT 2

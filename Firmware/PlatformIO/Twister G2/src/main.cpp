@@ -16,6 +16,11 @@ float LeftServo{};
 float RightServo{};
 float BottomServo{};
 
+//i2c pack settings
+unsigned char BlowerSpeed{};
+unsigned char AgitatorSpeed = 255;
+
+
 //System clock
 void GetTicks(void)
 {
@@ -49,11 +54,28 @@ void handlePusher(bool Fire, int RatePot, int ModePot)
 }
 
 
+void HandlePack(bool Fire, int RatePot, int ModePot, int PowerPot)
+{
+  if(ModePot > 512)
+  {
+    //from 0x00 to 0xff, the pack will handle the re-mapping to acceptable blower values
+    BlowerSpeed = map(RatePot, POT_MIN, POT_MAX, 0, 255);
 
+    //ditto with the agitator, but this one is usually left at 255 (full speed)
+    AgitatorSpeed = map(PowerPot, POT_MIN, POT_MAX, 0, 255);
+  }
+
+  Wire.beginTransmission(PACK_ADDRESS);
+
+  Wire.write(Fire);
+  Wire.write(BlowerSpeed);
+  Wire.write(AgitatorSpeed);
+
+
+}
 
 
 void setup() {
-  // put your setup code here, to run once:
 
   ServoLeft.attach(ESC_A);
   ServoRight.attach(ESC_B);
@@ -73,28 +95,39 @@ void setup() {
 
   pinMode(PUSHER_PIN, OUTPUT);
 
-
-
-  //debug (and potential other things)
+  //wire is used for both of these conditions
+#ifdef I2C || DEBUG_MODE
   Wire.begin();
+#endif
+
+
+#ifdef DEBUG_MODE
+  Serial.begin(9600);
+#endif
+
+
+
 
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
 
   GetTicks();
 
+
+
 #ifdef UPSIDE_DOWN
   //reverse map the pots because everything is flipped
-  DriveAllFlywheels(
-    map(analogRead(X_JOYSTICK_POT), JOYSTICK_MIN, JOYSTICK_MAX, JOYSTICK_MAX, JOYSTICK_MIN),
-    map(analogRead(Y_JOYSTICK_POT), JOYSTICK_MIN, JOYSTICK_MAX, JOYSTICK_MAX, JOYSTICK_MIN), 
-    (digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0   , &LeftServo, &RightServo, &BottomServo);
+  unsigned int XJoystickRead = map(analogRead(X_JOYSTICK_POT), JOYSTICK_X_MIN, JOYSTICK_X_MAX, JOYSTICK_X_MAX, JOYSTICK_X_MIN);
+  unsigned int YJoystickRead = map(analogRead(Y_JOYSTICK_POT), JOYSTICK_Y_MIN, JOYSTICK_Y_MAX, JOYSTICK_Y_MAX, JOYSTICK_Y_MIN);
 
 #else
-  DriveAllFlywheels(analogRead(X_JOYSTICK_POT), analogRead(Y_JOYSTICK_POT), (digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0   , &LeftServo, &RightServo, &BottomServo);
+  unsigned int XJoystickRead = analogRead(X_JOYSTICK_POT);
+  unsigned int YJoystickRead = analogRead(Y_JOYSTICK_POT);
+
 #endif
+
+    DriveAllFlywheels(XJoystickRead, YJoystickRead, (digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0   , &LeftServo, &RightServo, &BottomServo);
 
 
   ServoLeft.write(
@@ -110,16 +143,49 @@ void loop() {
     ESC_MIN, BottomServo));
 
 
+
+
+  //write some important values over i2c
+#ifdef DEBUG_MODE
   Wire.beginTransmission(2);
   Wire.write(char(LeftServo));
   Wire.write(char(RightServo));
   Wire.write(char(BottomServo));
+
+
+ 	unsigned char X_Pot_Array[2] = {
+	analogRead(X_JOYSTICK_POT) & 0xFF,
+	(analogRead(X_JOYSTICK_POT) >> 8) & 0xFF,
+	};
+
+  for (int i = 0; i < 2; ++i)
+  {
+    Wire.write(X_Pot_Array[i]);
+  }
+
+  unsigned char Y_Pot_Array[2] = {
+	analogRead(Y_JOYSTICK_POT) & 0xFF,
+	(analogRead(Y_JOYSTICK_POT) >> 8) & 0xFF,
+	};
+
+  for (int i = 0; i < 2; ++i)
+  {
+    Wire.write(Y_Pot_Array[i]);
+  }
+
   Wire.endTransmission();
-
-
+#endif
 
 
   handlePusher((digitalRead(FIRE_BUTTON) == ON_STATE && digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0, analogRead(RATE_POT), analogRead(MODE_POT));
+
+#ifdef I2C
+  //every 20th of a second to conserve cycles
+  if(MillisecondTicks % 50 == 0 &&
+    MillisecondTicks != LastMillisecondTicks)
+    HandlePack((digitalRead(FIRE_BUTTON) == ON_STATE && digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0, analogRead(RATE_POT), analogRead(MODE_POT), analogRead(POWER_POT)   );
+#endif
+
 
   
 }
