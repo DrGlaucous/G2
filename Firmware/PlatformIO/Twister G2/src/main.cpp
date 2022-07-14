@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
+#include <EEPROM.h>
 #include "main.h"
 #include "configuration.h"
 #include "ArcMapping.h"
@@ -17,8 +18,9 @@ float RightServo{};
 float BottomServo{};
 
 //i2c pack settings
-unsigned char BlowerSpeed{};
-unsigned char AgitatorSpeed = 255;
+bool InSettingsMode{};
+unsigned char BlowerSpeed = PACK_DEFAULT_BLOWER_VALUE;
+unsigned char AgitatorSpeed = PACK_DEFAULT_AGITATOR_VALUE;
 
 
 //System clock
@@ -36,34 +38,84 @@ Servo ServoLeft;
 Servo ServoRight;
 Servo ServoBottom;
 
-
-
-void handlePusher(bool Fire, int RatePot, int ModePot)
+//saves user values to EEPROM
+void EEPROMSave(unsigned char BlowerS, unsigned char AgiS)
 {
-  if(Fire)
+  EEPROM.update(0, BlowerS);
+  EEPROM.update(1, AgiS);
+  EEPROM.update(2, 0x50);
+}
+
+//writes hard-coded defaults to the EEPROM
+void EEPROMFactoryReset(void)
+{
+  //will use adress 0 and 1 for storing PPack values
+  EEPROM.update(0, PACK_DEFAULT_BLOWER_VALUE);
+  EEPROM.update(1, PACK_DEFAULT_AGITATOR_VALUE);
+  EEPROM.update(2, 0x50);//redundancy check: if this address is anything but 0x50, the board knows to put factory defaults in here
+}
+
+//pulls the relavent values from the controller's EEPROM
+bool EEPROMRead(unsigned char* BlowerS, unsigned char* AgiS)
+{
+  *BlowerS = EEPROM.read(0);//blower speed
+  *AgiS = EEPROM.read(1);//agitator speed
+  //the validation byte used to determine if the EEPROM has been stored to before
+  if(EEPROM.read(2) == 0x50)
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+
+}
+
+//pusher sub-function
+void HandlePusher(bool Fire, int RatePot, int ModePot)
+{
+  if( Fire == 0 || ModePot > 512)//will not fire in settings mode
+  {
+    analogWrite(PUSHER_PIN, 0);
+  }
+  else
   {
     analogWrite(PUSHER_PIN, 
     map(RatePot, POT_MIN, POT_MAX, 0, 255)
     );
 
-  }
-  else
-  {
-    analogWrite(PUSHER_PIN, 0);
+
+
   }
 }
 
-
+//handles the control of the SuperCell
 void HandlePack(bool Fire, int RatePot, int ModePot, int PowerPot)
 {
+
+
   if(ModePot > 512)
   {
+    InSettingsMode = true;
     //from 0x00 to 0xff, the pack will handle the re-mapping to acceptable blower values
-    BlowerSpeed = map(RatePot, POT_MIN, POT_MAX, 0, 255);
+    BlowerSpeed = map(PowerPot, POT_MIN, POT_MAX, 0, 255);
 
     //ditto with the agitator, but this one is usually left at 255 (full speed)
-    AgitatorSpeed = map(PowerPot, POT_MIN, POT_MAX, 0, 255);
+    AgitatorSpeed = map(RatePot, POT_MIN, POT_MAX, 0, 255);
   }
+  else if(InSettingsMode == true && digitalRead(FIRE_BUTTON) == ON_STATE)//only true for the first tick that the ModePot is switched back
+  {
+    InSettingsMode = false;
+    EEPROMSave(BlowerSpeed, AgitatorSpeed);//save pack values to EEPROM
+
+  }
+  else
+  {
+    InSettingsMode = false;
+  }
+
+  digitalWrite(13, Fire);
 
   Wire.beginTransmission(PACK_ADDRESS);
 
@@ -71,8 +123,11 @@ void HandlePack(bool Fire, int RatePot, int ModePot, int PowerPot)
   Wire.write(BlowerSpeed);
   Wire.write(AgitatorSpeed);
 
+  Wire.endTransmission();
+
 
 }
+
 
 
 void setup() {
@@ -95,10 +150,26 @@ void setup() {
 
   pinMode(PUSHER_PIN, OUTPUT);
 
+
+  //builtin LED for debugging
+  pinMode(13, OUTPUT);
+
   //wire is used for both of these conditions
-#ifdef I2C || DEBUG_MODE
+#if defined(I2C) || defined(DEBUG_MODE)
   Wire.begin();
 #endif
+
+
+  //if restoring settings from EEPROM show that it has not been written to or
+  //if the fire button is held down on power up, this will restore EEPROM pack settings back to default ones in the code
+  if(!EEPROMRead(&BlowerSpeed, &AgitatorSpeed) || digitalRead(FIRE_BUTTON) == ON_STATE)
+  {
+    EEPROMFactoryReset();
+
+    //little visual verification that the EEPROM has been factory reset when power-cycled
+    digitalWrite(13, HIGH);
+  }
+
 
 
 #ifdef DEBUG_MODE
@@ -127,7 +198,7 @@ void loop() {
 
 #endif
 
-    DriveAllFlywheels(XJoystickRead, YJoystickRead, (digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0   , &LeftServo, &RightServo, &BottomServo);
+    DriveAllFlywheels(XJoystickRead, YJoystickRead, (digitalRead(REV_BUTTON) == ON_STATE  &&   analogRead(MODE_POT) <= 512   )? 1 : 0   , &LeftServo, &RightServo, &BottomServo);
 
 
   ServoLeft.write(
@@ -142,6 +213,17 @@ void loop() {
     map(analogRead(POWER_POT), POT_MIN, POT_MAX,
     ESC_MIN, BottomServo));
 
+
+
+  HandlePusher((digitalRead(FIRE_BUTTON) == ON_STATE && digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0, analogRead(RATE_POT), analogRead(MODE_POT));
+
+
+#ifdef I2C
+  //every 20th of a second to conserve cycles
+  if(MillisecondTicks % 50 == 0 &&
+    MillisecondTicks != LastMillisecondTicks)
+    HandlePack((digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0, analogRead(RATE_POT), analogRead(MODE_POT), analogRead(POWER_POT)   );
+#endif
 
 
 
@@ -174,16 +256,6 @@ void loop() {
   }
 
   Wire.endTransmission();
-#endif
-
-
-  handlePusher((digitalRead(FIRE_BUTTON) == ON_STATE && digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0, analogRead(RATE_POT), analogRead(MODE_POT));
-
-#ifdef I2C
-  //every 20th of a second to conserve cycles
-  if(MillisecondTicks % 50 == 0 &&
-    MillisecondTicks != LastMillisecondTicks)
-    HandlePack((digitalRead(FIRE_BUTTON) == ON_STATE && digitalRead(REV_BUTTON) == ON_STATE)? 1 : 0, analogRead(RATE_POT), analogRead(MODE_POT), analogRead(POWER_POT)   );
 #endif
 
 

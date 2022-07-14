@@ -38,7 +38,7 @@
 #define MODE_POT 0
 
 #define POT_MIN 0
-#define POT_MAX 1023
+#define POT_MAX 1023//overshooting this value will decrease the overall max FPS the blaster will shoot at
 
 //pins for the outputs
 
@@ -74,10 +74,27 @@ A      B
 #define UPSIDE_DOWN
 
 #define I2C//use I2C to communicate with the superCell
+#define PACK_ADDRESS 2//address of the pack on the i2c line
+
+//enables several different serial and i2c debug messages
+//(i2c is used when the blaster is assembled, and it is not possible to get to the USB port)
+//#define DEBUG_MODE
+
+//between 0 and 255, if the fire (top) button is held down on power cycle, these values are stored to the EEPROM (or if nothing is there in the first place)
+#define PACK_DEFAULT_BLOWER_VALUE 150
+#define PACK_DEFAULT_AGITATOR_VALUE 255
 
 
-
-
+//little explanation on how the blaster's options should work
+//If the SETTINGS pot is in the forward position, it puts the blaster into "pack settings mode"
+//in this mode, rev and fire do not do anything on the blaster itself
+//revving ONLY revs the supercell (so the user can set the blower correctly without launching balls everywhere)
+//the POWER pot (originally for flywheels) sets the blower speed, and the PUSH_SPEED pot sets the agitator speed (originally for the pusher wheel)
+//when the user is done, moving the SETTINGS pot back will keep their settings on the pack and return the blaster to normal operation, though with the pack using the values they just set
+//with a power cycle, all settings are lost unless the user holds down the FIRE_BUTTON when exiting settings mode, in which the blaster will store the values to EEPROM
+//When turning on the blaster, EEPROM settings will be loaded back into memory
+//if the blaster was turned on for the first time, hard-coded defaults will be loaded and stored to the EEPROM
+//if the user holds down the FIRE_BUTTON when turning the blaster on, hard-coded defaults will be loaded and stored to the EEPROM
 
 
 

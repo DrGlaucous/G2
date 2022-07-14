@@ -141,6 +141,7 @@ void DriveAllFlywheels (int JoystickX, int JoystickY, bool Fire, float* LeftServ
       *BottomServo = RawBottomServo;
       SlowCounter = REV_DOWN_RATE;
 
+#ifdef DEBUG_MODE
       Serial.print(X);
       Serial.print(" : ");
       Serial.print(Y);
@@ -150,7 +151,7 @@ void DriveAllFlywheels (int JoystickX, int JoystickY, bool Fire, float* LeftServ
       Serial.print(RawRightServo);
       Serial.print(" : ");
       Serial.println(RawBottomServo);
-
+#endif
 
 
     }
