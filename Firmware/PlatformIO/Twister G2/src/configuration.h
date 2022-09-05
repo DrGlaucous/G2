@@ -75,10 +75,13 @@ A      B
 
 #define I2C//use I2C to communicate with the superCell
 #define PACK_ADDRESS 2//address of the pack on the i2c line
+#define I2C_TIMEOUT 5000//microseconds until the blaster gives up communicating with the pack for that cycle
+//(good if you want to switch between running the blaster with and without the pack, commenting this out will make it unusable without an i2c peripheral)
 
 //enables several different serial and i2c debug messages
 //(i2c is used when the blaster is assembled, and it is not possible to get to the USB port)
 //#define DEBUG_MODE
+#define DEBUG_I2C_ADDRESS 8
 
 //between 0 and 255, if the fire (top) button is held down on power cycle, these values are stored to the EEPROM (or if nothing is there in the first place)
 #define PACK_DEFAULT_BLOWER_VALUE 150

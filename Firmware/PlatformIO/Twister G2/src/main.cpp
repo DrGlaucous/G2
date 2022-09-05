@@ -38,6 +38,27 @@ Servo ServoLeft;
 Servo ServoRight;
 Servo ServoBottom;
 
+
+//lights the onbaord LED for the desired ammount of time, run it without arguments to have it count down using the system clock
+void StatusLED(int MilTime, bool IsOn)
+{
+  static unsigned long EndMilTime{};
+
+  if(IsOn == true)
+  {
+    EndMilTime = MillisecondTicks + MilTime;//move to end time specified
+    digitalWrite(13, HIGH);//turn LED on
+  }
+
+  if(EndMilTime < MillisecondTicks)
+  {
+      digitalWrite(13, LOW);
+  }
+
+
+
+}
+
 //saves user values to EEPROM
 void EEPROMSave(unsigned char BlowerS, unsigned char AgiS)
 {
@@ -115,15 +136,18 @@ void HandlePack(bool Fire, int RatePot, int ModePot, int PowerPot)
     InSettingsMode = false;
   }
 
-  digitalWrite(13, Fire);
-
   Wire.beginTransmission(PACK_ADDRESS);
 
   Wire.write(Fire);
   Wire.write(BlowerSpeed);
   Wire.write(AgitatorSpeed);
 
-  Wire.endTransmission();
+#ifdef DEBUG_MODE
+  Serial.print(Wire.endTransmission());
+#else
+  if(!Wire.endTransmission())
+    StatusLED(10, true);//indicate i2c had problems
+#endif
 
 
 }
@@ -157,6 +181,7 @@ void setup() {
   //wire is used for both of these conditions
 #if defined(I2C) || defined(DEBUG_MODE)
   Wire.begin();
+  Wire.setWireTimeout(I2C_TIMEOUT);//fixes a problem when running the blaster when the pack is not connected, the code hangs on i2c writeout because nothing is responding
 #endif
 
 
@@ -164,12 +189,12 @@ void setup() {
   //if the fire button is held down on power up, this will restore EEPROM pack settings back to default ones in the code
   if(!EEPROMRead(&BlowerSpeed, &AgitatorSpeed) || digitalRead(FIRE_BUTTON) == ON_STATE)
   {
-    EEPROMFactoryReset();
+
+    EEPROMFactoryReset();//EEProm functions use the update() command, so burning out EEPRom isn't as much of an issue
 
     //little visual verification that the EEPROM has been factory reset when power-cycled
-    digitalWrite(13, HIGH);
+    StatusLED(1000, true);
   }
-
 
 
 #ifdef DEBUG_MODE
@@ -185,6 +210,8 @@ void loop() {
 
   GetTicks();
 
+  //handle any debug LED responses
+  StatusLED();
 
 
 #ifdef UPSIDE_DOWN
@@ -198,7 +225,8 @@ void loop() {
 
 #endif
 
-    DriveAllFlywheels(XJoystickRead, YJoystickRead, (digitalRead(REV_BUTTON) == ON_STATE  &&   analogRead(MODE_POT) <= 512   )? 1 : 0   , &LeftServo, &RightServo, &BottomServo);
+
+  DriveAllFlywheels(XJoystickRead, YJoystickRead, (digitalRead(REV_BUTTON) == ON_STATE  &&   analogRead(MODE_POT) <= 512   )? 1 : 0   , &LeftServo, &RightServo, &BottomServo);
 
 
   ServoLeft.write(
@@ -229,12 +257,13 @@ void loop() {
 
   //write some important values over i2c
 #ifdef DEBUG_MODE
-  Wire.beginTransmission(2);
+
+  Wire.beginTransmission(DEBUG_I2C_ADDRESS);
   Wire.write(char(LeftServo));
   Wire.write(char(RightServo));
   Wire.write(char(BottomServo));
 
-
+  //breaking short values into char arrays for transmission
  	unsigned char X_Pot_Array[2] = {
 	analogRead(X_JOYSTICK_POT) & 0xFF,
 	(analogRead(X_JOYSTICK_POT) >> 8) & 0xFF,
@@ -256,6 +285,8 @@ void loop() {
   }
 
   Wire.endTransmission();
+
+
 #endif
 
 
